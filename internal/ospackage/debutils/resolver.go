@@ -315,6 +315,16 @@ func ParseRepositoryMetadata(baseURL string, pkggz string, releaseFile string, r
 	localReleaseSign := filepath.Join(pkgMetaDir, metadataFileName(releaseSign))
 	localPBGPGKey := filepath.Join(pkgMetaDir, metadataFileName(pbGPGKey))
 
+	// InRelease (inline-signed) lives beside Release in the same dist directory.
+	// It is fetched best-effort so VerifyRelease can fall back to it when a
+	// mirror's detached Release.gpg does not match its Release file. Absence is
+	// tolerated: the fallback simply does not trigger.
+	inReleaseURL := ""
+	if releaseFile != "" {
+		inReleaseURL = strings.TrimSuffix(releaseFile, path.Base(releaseFile)) + "InRelease"
+	}
+	localInRelease := filepath.Join(pkgMetaDir, "InRelease")
+
 	// Determine if pbGPGKey is a URL or file path
 	pbkeyIsURL := false
 	isTrustedRepo := pbGPGKey == "[trusted=yes]"
@@ -359,6 +369,16 @@ func ParseRepositoryMetadata(baseURL string, pkggz string, releaseFile string, r
 	}
 
 	refreshed, refreshErr := refreshRepoMetadata(pkgMetaDir, metaLocalFiles, metaURLList)
+
+	// Best-effort InRelease fetch for the VerifyRelease fallback. Done separately
+	// from the mandatory metadata set so a mirror that lacks InRelease (or a
+	// transient failure fetching it) never fails the build; it only means the
+	// detached-signature fallback is unavailable.
+	if !isTrustedRepo && inReleaseURL != "" {
+		if _, inErr := refreshRepoMetadata(pkgMetaDir, []string{localInRelease}, []string{inReleaseURL}); inErr != nil {
+			log.Debugf("InRelease not fetched for %s (%v); detached-signature fallback unavailable", baseURL, inErr)
+		}
+	}
 	switch {
 	case refreshErr != nil && !haveLocalMeta:
 		// Nothing cached to fall back to, so this is fatal — as it was before.
