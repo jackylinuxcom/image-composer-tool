@@ -1,0 +1,245 @@
+---
+# Robotics Suite: Edge Image for eLxr 26.04 — ROS 2 (Jazzy) PRE-INSTALLED variant
+# eLxr 26.04 (Debian 13/trixie) + ROS 2 Jazzy pulled AT BUILD TIME (ICT stage)
+#
+# DIFFERENCE FROM robotics-demo-elxr26-edge-ros2-x86_64.yml:
+#   The other ROS 2 template installs ros-jazzy packages on FIRST BOOT (because the
+#   ros-base METAPACKAGE drags in python3-roswtf -> python3-paramiko -> python3-nacl,
+#   which the ICT offline resolver misparses against python3-cffi-backend's versioned
+#   Provides). THIS template installs ROS 2 DURING THE ICT BUILD by listing the
+#   CONCRETE LEAF PACKAGES directly and NOT the ros-base metapackage. Every leaf
+#   package below was verified to be free of the python3-nacl dependency chain, so
+#   the offline resolver can satisfy them. The result is an image with ROS 2 Jazzy
+#   already installed under /opt/ros/jazzy — no first-boot network step needed.
+#
+# WHY LEAF PACKAGES (not ros-base):
+#   nacl chain:   ros-jazzy-ros-base -> ros-core-dev -> ros-core -> python3-roswtf
+#                 -> python3-paramiko -> python3-nacl   (offline resolver misparse)
+#   Verified nacl-FREE: rclcpp, rclpy, rmw-fastrtps-cpp, ros2cli + ros2* verbs,
+#                 demo-nodes-cpp/py, turtlesim, std/geometry/sensor-msgs, launch(-ros).
+#
+# MIDDLEWARE: FastRTPS only. CycloneDDS (rmw-cyclonedds-cpp -> cyclonedds ->
+#   iceoryx-hoofs) has an unsatisfiable Conflicts vs the eLxr base libiceoryx-hoofs-dev
+#   2.0.6+dfsg-1, so it is NOT installed.
+#
+# PACKAGE SOURCE: custom wr55 apt repo (nginx :8080), codename 'bianca', component
+#   'main'. The ICT tool downloads the signing key and verifies the Release at build.
+#   REQUIRES: NOT on the corporate VPN during build (VPN ACL blocks plain HTTP to :8080).
+#
+# Usage:
+#   sudo -E ./image-composer-tool build image-templates/elxr26/robotics-demo-elxr26-edge-ros2-prebuilt-x86_64.yml
+#
+# VM launch (QEMU):
+#   qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -smp 4 -m 4096 \
+#     -drive if=pflash,format=raw,readonly=on,file=OVMF_CODE_4M.fd \
+#     -drive if=pflash,format=raw,file=OVMF_VARS_4M.fd \
+#     -drive file=robotics-demo-elxr26-edge-ros2-prebuilt-26.04.raw,format=raw,if=virtio \
+#     -device virtio-net-pci,netdev=net0 \
+#     -netdev user,id=net0,hostfwd=tcp::2222-:22 -nographic
+#
+# Login: root/root, sysadmin/sysadmin (sudo NOPASSWD)
+#
+# ROS 2 is pre-installed and auto-sourced on login (/etc/profile.d/ros2.sh):
+#   ros2 run demo_nodes_cpp talker &
+#   ros2 run demo_nodes_cpp listener
+#   ros2 run turtlesim turtlesim_node        # GUI over ssh -X
+
+metadata:
+  description: ROS 2 Jazzy edge platform for eLxr 26.04 with ROS 2 PRE-INSTALLED at build time (leaf packages, FastRTPS)
+  use_cases:
+    - Robotics edge image with ROS 2 baked in (no first-boot install)
+    - Offline / air-gapped deployment after build
+    - ROS 2 Jazzy on Debian 13/trixie
+    - DDS pub/sub (talker/listener) and turtlesim demos
+  keywords:
+    - robotics
+    - ros2
+    - jazzy
+    - edge
+    - elxr
+    - prebuilt
+    - fastrtps
+    - turtlesim
+    - custom-repo
+
+image:
+  name: robotics-demo-elxr26-edge-ros2-prebuilt
+  version: "26.04"
+
+target:
+  os: wind-river-elxr
+  dist: elxr26
+  arch: x86_64
+  imageType: raw
+
+# A touch larger than the first-boot variant since ROS 2 is baked in.
+disk:
+  name: robotics-demo-edge-ros2-prebuilt
+  artifacts:
+    - type: raw
+      compression: gz
+  size: 14GiB
+  partitionTableType: gpt
+  partitions:
+    - id: boot
+      type: esp
+      flags:
+        - esp
+        - boot
+      start: 1MiB
+      end: 513MiB
+      fsType: fat32
+      mountPoint: /boot/efi
+      mountOptions: umask=0077
+    - id: rootfs
+      type: linux-root-amd64
+      start: 513MiB
+      end: "0"
+      fsType: ext4
+      mountPoint: /
+      mountOptions: defaults
+
+# Custom external ROS 2 deb repository (wr55 nginx :8080). The ICT tool downloads
+# the signing key (pkey) and verifies the Release during the build, then installs
+# the ros-jazzy-* leaf packages listed under systemConfig.packages.
+# NOTE: Reachable only when NOT on the corporate VPN.
+packageRepositories:
+  - url: "http://69.167.148.96:8080"
+    codename: "bianca"
+    component: "main"
+    pkey: "http://69.167.148.96:8080/dists/bianca/ros2-repo.asc"
+    priority: 600
+
+systemConfig:
+  name: robotics-demo-edge-ros2-prebuilt
+  description: ROS 2 Jazzy Edge Platform on eLxr 26.04 (pre-installed at build, FastRTPS)
+
+  # GRUB (not systemd-boot). systemd-boot-efi-signed is not installable from Bianca.
+  bootloader:
+    bootType: efi
+    provider: grub
+
+  immutability:
+    enabled: false
+
+  packages:
+    # Base system (eLxr equivalents)
+    - base-files
+    - base-passwd
+    - systemd
+    - systemd-resolved
+    - openssh-server
+    - network-manager
+    - sudo
+    - curl
+    - vim
+    - nano
+
+    # debconf frontend deps (silence dialog/readline warnings on apt operations)
+    - whiptail
+    - libterm-readline-gnu-perl
+
+    # GRUB bootloader
+    - grub2-common
+    - grub-pc-bin
+    - grub-efi-amd64
+    - grub-efi-amd64-bin
+
+    # Boot/initramfs
+    - dracut-core
+    - cryptsetup-bin
+
+    # X11 forwarding (turtlesim / rqt GUI over SSH)
+    - xauth
+    - x11-apps
+
+    # ---- ROS 2 Jazzy — CONCRETE LEAF PACKAGES, installed AT BUILD TIME ----
+    # All verified free of the python3-nacl chain, so the ICT offline resolver
+    # can satisfy them. The ros-base METAPACKAGE is deliberately NOT listed
+    # (it is what pulls roswtf -> paramiko -> python3-nacl).
+
+    # Client libraries (C++ and Python)
+    - ros-jazzy-rclcpp
+    - ros-jazzy-rclpy
+
+    # Middleware: FastRTPS (ROS 2 default; avoids CycloneDDS/iceoryx conflict)
+    - ros-jazzy-rmw-fastrtps-cpp
+
+    # 'ros2' CLI command + the common verbs
+    - ros-jazzy-ros2cli
+    - ros-jazzy-ros2run
+    - ros-jazzy-ros2node
+    - ros-jazzy-ros2topic
+    - ros-jazzy-ros2pkg
+    - ros-jazzy-ros2launch
+    - ros-jazzy-ros2service
+    - ros-jazzy-ros2param
+    - ros-jazzy-ros2interface
+
+    # Launch system
+    - ros-jazzy-launch
+    - ros-jazzy-launch-ros
+
+    # Common message packages
+    - ros-jazzy-std-msgs
+    - ros-jazzy-geometry-msgs
+    - ros-jazzy-sensor-msgs
+
+    # Demo + visual packages
+    - ros-jazzy-demo-nodes-cpp
+    - ros-jazzy-demo-nodes-py
+    - ros-jazzy-turtlesim
+
+    # NOTE: ros-jazzy-rqt* (Qt GUI) can hit the Qt6 private-ABI clash with the eLxr
+    # base's +dfsg Qt6, so it is NOT installed at build time. Install post-boot with
+    # 'sudo install-ros2-extras' if you need rqt_graph / rqt_plot.
+
+  kernel:
+    cmdline: "console=ttyS0,115200 console=tty0 loglevel=7"
+    packages:
+      - linux-image-amd64
+
+  configurations:
+    # Users (chpasswd — plaintext, reliable)
+    - cmd: "sh -c 'echo \"root:root\" | chpasswd'"
+    - cmd: "useradd -m -s /bin/bash -G sudo sysadmin"
+    - cmd: "sh -c 'echo \"sysadmin:sysadmin\" | chpasswd'"
+    - cmd: "sh -c 'echo \"sysadmin ALL=(ALL) NOPASSWD:ALL\" >> /etc/sudoers.d/sysadmin'"
+    - cmd: "chmod 0440 /etc/sudoers.d/sysadmin"
+    - cmd: "chown -R sysadmin:sysadmin /home/sysadmin"
+
+    # ROS 2 env: source /opt/ros/jazzy (installed at build) + FastRTPS default
+    - cmd: "sh -c 'printf \"[ -f /opt/ros/jazzy/setup.bash ] && . /opt/ros/jazzy/setup.bash\\nexport RMW_IMPLEMENTATION=rmw_fastrtps_cpp\\n\" > /etc/profile.d/ros2.sh && chmod 0644 /etc/profile.d/ros2.sh'"
+
+    # Services
+    - cmd: "systemctl enable NetworkManager"
+    - cmd: "systemctl enable ssh"
+
+    # SSH X11 forwarding (IPv4 only in QEMU)
+    - cmd: "sh -c \"mkdir -p /etc/ssh/sshd_config.d && printf 'AddressFamily inet\\n' > /etc/ssh/sshd_config.d/10-addressfamily.conf\""
+
+    # Disable IPv6
+    - cmd: "echo 'net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.d/99-disable-ipv6.conf"
+    - cmd: "echo 'net.ipv6.conf.default.disable_ipv6 = 1' >> /etc/sysctl.d/99-disable-ipv6.conf"
+
+    # Hostname + clean IPv4 /etc/hosts
+    - cmd: "echo 'robotics-demo-elxr26-edge-ros2-prebuilt' > /etc/hostname"
+    - cmd: "sh -c 'printf \"127.0.0.1\\tlocalhost robotics-demo-elxr26-edge-ros2-prebuilt\\n\" > /etc/hosts'"
+
+    # ROS 2 DDS networking (single-host demo: localhost only, domain 0)
+    - cmd: "sh -c 'printf \"export ROS_DOMAIN_ID=0\\nexport ROS_LOCALHOST_ONLY=1\\n\" > /etc/profile.d/ros2-network.sh && chmod 0644 /etc/profile.d/ros2-network.sh'"
+
+    # Base apt sources — all Bianca components (base OS updates)
+    - cmd: "sh -c 'printf \"deb [arch=amd64 signed-by=/usr/share/keyrings/elxr-archive-keyring.gpg] https://mirror.elxr.dev/elxr bianca main main-debian-community non-free-firmware non-free-firmware-debian-community contrib\\ndeb [arch=amd64 signed-by=/usr/share/keyrings/elxr-archive-keyring.gpg] https://mirror.elxr.dev/elxr bianca-security main main-debian-community non-free-firmware non-free-firmware-debian-community contrib\\ndeb [arch=amd64 signed-by=/usr/share/keyrings/elxr-archive-keyring.gpg] https://mirror.elxr.dev/elxr bianca-updates main main-debian-community non-free-firmware non-free-firmware-debian-community contrib\\n\" > /etc/apt/sources.list.d/elxr-bianca.list'"
+
+    # NOTE: wr55 ROS 2 repo is NOT written manually (the tool persists it from
+    # packageRepositories to package-repositories.list + installs the key to
+    # trusted.gpg.d). Avoids the duplicate apt source warning.
+
+    # ROS 2 workspace
+    - cmd: "mkdir -p /home/sysadmin/ros2_ws/src"
+    - cmd: "chown -R sysadmin:sysadmin /home/sysadmin/ros2_ws"
+
+    # Optional extras helper (rqt GUI, extra python nodes) — run post-boot if wanted:
+    #   sudo install-ros2-extras
+    - cmd: "sh -c 'printf \"#!/bin/sh\\nset -e\\napt-get update\\napt-get install -y ros-jazzy-rqt ros-jazzy-rqt-graph ros-jazzy-rqt-plot\\necho \\\"ROS 2 rqt extras installed.\\\"\\n\" > /usr/local/bin/install-ros2-extras && chmod 0755 /usr/local/bin/install-ros2-extras'"
