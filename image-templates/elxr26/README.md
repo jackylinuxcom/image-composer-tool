@@ -1,8 +1,8 @@
-# Wind River eLxr 13 (26.04) templates
+# Wind River eLxr 26.04 templates
 
-`target.dist: elxr13` — 5 templates.
+`target.dist: elxr26` — 5 templates.
 
-> Filenames use the `elxr-edge-26.04-` prefix while the templates declare `dist: elxr13`; the directory follows what the templates declare.
+> Filenames use the `elxr-edge-26.04-` prefix while the templates declare `dist: elxr26`; the directory follows what the templates declare.
 
 | Template | Arch | Type | Purpose | CI |
 |---|---|---|---|---|

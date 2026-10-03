@@ -377,8 +377,8 @@ func normalizeElxrDist(dist string) string {
 	switch dist {
 	case "", "elxr12", "aria":
 		return "elxr12"
-	case "elxr13", "bianca":
-		return "elxr13"
+	case "elxr26", "elxr13", "bianca":
+		return "elxr26"
 	default:
 		return dist
 	}

@@ -1,10 +1,10 @@
 image:
   name: wsl2-rootfs-elxr
-  version: "13.0.0"
+  version: "26.04.02"
 
 target:
   os: wind-river-elxr
-  dist: elxr13
+  dist: elxr26
   arch: x86_64
   imageType: wsl2
 

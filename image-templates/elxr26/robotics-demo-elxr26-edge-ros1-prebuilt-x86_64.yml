@@ -1,0 +1,229 @@
+---
+# Robotics Suite: Edge Image for eLxr 26.04 — ROS 1 PRE-INSTALLED variant
+# eLxr 26.04 (Debian 13/trixie) + ROS 1 (Debian robotics packaging) pulled AT BUILD TIME
+#
+# DIFFERENCE FROM robotics-demo-elxr26-edge-x86_64.yml:
+#   The other ROS 1 template installs ros-core/ros-base on FIRST BOOT (because the
+#   ros-core METAPACKAGE drags in python3-roswtf -> python3-paramiko -> python3-nacl,
+#   which the ICT offline resolver misparses against python3-cffi-backend's versioned
+#   Provides). THIS template installs ROS 1 DURING THE ICT BUILD by listing the
+#   CONCRETE LEAF PACKAGES directly and NOT the ros-core metapackage. Every leaf
+#   package below was verified to be free of the python3-nacl dependency chain, so
+#   the offline resolver can satisfy them. The result is an image with the ROS 1
+#   runtime (roscore, rostopic, rospy, …) already installed — no first-boot network
+#   step needed.
+#
+# WHY LEAF PACKAGES (not ros-core/ros-base):
+#   nacl chain:   ros-core -> python3-roswtf -> python3-paramiko -> python3-nacl
+#                 (offline resolver misparse of python3-cffi-backend versioned Provides)
+#   Verified nacl-FREE and sufficient for a roscore + rostopic demo:
+#     python3-roslaunch (provides 'roscore'), python3-rosmaster, python3-rosgraph,
+#     python3-rostopic, python3-rosnode, python3-rosservice, python3-rosparam,
+#     python3-rosmsg, python3-rospy, python3-roslib, rosbash, rosout,
+#     rospack-tools, topic-tools, ros-std-msgs, ros-geometry-msgs, ros-sensor-msgs.
+#
+# PACKAGE SOURCE: the DEFAULT eLxr Bianca mirror (main-debian-community component).
+#   No custom packageRepositories entry needed — the provider config already enables it.
+#   (ROS 1 is in Bianca; unlike ROS 2 Jazzy which needs the custom wr55 repo.)
+#
+# Usage:
+#   sudo -E ./image-composer-tool build image-templates/elxr26/robotics-demo-elxr26-edge-ros1-prebuilt-x86_64.yml
+#
+# VM launch (QEMU):
+#   qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -smp 4 -m 4096 \
+#     -drive if=pflash,format=raw,readonly=on,file=OVMF_CODE_4M.fd \
+#     -drive if=pflash,format=raw,file=OVMF_VARS_4M.fd \
+#     -drive file=robotics-demo-elxr26-edge-ros1-prebuilt-26.04.raw,format=raw,if=virtio \
+#     -device virtio-net-pci,netdev=net0 \
+#     -netdev user,id=net0,hostfwd=tcp::2222-:22 -nographic
+#
+# Login: root/root, sysadmin/sysadmin (sudo NOPASSWD)
+#
+# ROS 1 env auto-loads on login via /etc/profile.d (ros-environment hooks) + the
+# ros-network.sh this template installs. Demo (no tutorial pkgs in Bianca, so use rostopic):
+#   roscore &
+#   rostopic pub -r 1 /chatter std_msgs/String "data: 'hello from eLxr ROS1 (prebuilt)'" &
+#   rostopic echo /chatter
+
+metadata:
+  description: ROS 1 (Debian robotics) edge platform for eLxr 26.04 with ROS 1 PRE-INSTALLED at build time (leaf packages)
+  use_cases:
+    - Robotics edge image with ROS 1 baked in (no first-boot install)
+    - Offline / air-gapped deployment after build
+    - ROS 1 roscore + rostopic pub/sub demos on eLxr
+    - Sensor/geometry message processing
+    - Industrial edge computing on eLxr
+  keywords:
+    - robotics
+    - ros
+    - ros1
+    - edge
+    - elxr
+    - bianca
+    - prebuilt
+
+image:
+  name: robotics-demo-elxr26-edge-ros1-prebuilt
+  version: "26.04"
+
+target:
+  os: wind-river-elxr
+  dist: elxr26
+  arch: x86_64
+  imageType: raw
+
+disk:
+  name: robotics-demo-edge-ros1-prebuilt
+  artifacts:
+    - type: raw
+      compression: gz
+  size: 12GiB
+  partitionTableType: gpt
+  partitions:
+    - id: boot
+      type: esp
+      flags:
+        - esp
+        - boot
+      start: 1MiB
+      end: 513MiB
+      fsType: fat32
+      mountPoint: /boot/efi
+      mountOptions: umask=0077
+    - id: rootfs
+      type: linux-root-amd64
+      start: 513MiB
+      end: "0"
+      fsType: ext4
+      mountPoint: /
+      mountOptions: defaults
+
+# NOTE: No custom packageRepositories block. ROS 1 packages resolve from the default
+# eLxr Bianca repositories (main-debian-community component), enabled by the provider
+# config. (ROS 2 needs the custom wr55 repo; ROS 1 does not.)
+
+systemConfig:
+  name: robotics-demo-edge-ros1-prebuilt
+  description: ROS 1 Edge Platform on eLxr 26.04 (pre-installed at build, Debian robotics packaging)
+
+  # GRUB (not systemd-boot). systemd-boot-efi-signed is not installable from Bianca.
+  bootloader:
+    bootType: efi
+    provider: grub
+
+  immutability:
+    enabled: false
+
+  packages:
+    # Base system (eLxr equivalents)
+    - base-files
+    - base-passwd
+    - systemd
+    - systemd-resolved
+    - openssh-server
+    - network-manager
+    - sudo
+    - curl
+    - vim
+    - nano
+
+    # debconf frontend deps (silence dialog/readline warnings on apt operations)
+    - whiptail
+    - libterm-readline-gnu-perl
+
+    # GRUB bootloader
+    - grub2-common
+    - grub-pc-bin
+    - grub-efi-amd64
+    - grub-efi-amd64-bin
+
+    # Boot/initramfs
+    - dracut-core
+    - cryptsetup-bin
+
+    # X11 forwarding (GUI over SSH)
+    - xauth
+    - x11-apps
+
+    # ---- ROS 1 (Debian packaging) — CONCRETE LEAF PACKAGES, installed AT BUILD TIME ----
+    # All verified free of the python3-nacl chain, so the ICT offline resolver can
+    # satisfy them. The ros-core / ros-base METAPACKAGES are deliberately NOT listed
+    # (ros-core is what pulls roswtf -> paramiko -> python3-nacl).
+
+    # roscore + master/graph (python3-roslaunch provides the 'roscore' command)
+    - python3-roslaunch
+    - python3-rosmaster
+    - python3-rosgraph
+
+    # ROS 1 CLI tools (rostopic / rosnode / rosservice / rosparam / rosmsg)
+    - python3-rostopic
+    - python3-rosnode
+    - python3-rosservice
+    - python3-rosparam
+    - python3-rosmsg
+
+    # Python client library + roslib (for rospy nodes)
+    - python3-rospy
+    - python3-roslib
+
+    # Runtime helpers / shell integration + logging + pkg query + topic tools
+    - rosbash
+    - rosout
+    - rospack-tools
+    - topic-tools
+    - ros-robot-state-publisher
+
+    # ROS 1 message definitions
+    - ros-std-msgs
+    - ros-geometry-msgs
+    - ros-sensor-msgs
+    - ros-nav-msgs
+    - ros-tf2-msgs
+
+    # NOTE: rviz is intentionally EXCLUDED (libqt6svg6 vs base +dfsg Qt6 private-ABI clash).
+    # NOTE: ros-core/ros-base metapackages excluded (roswtf -> paramiko -> python3-nacl).
+
+  kernel:
+    cmdline: "console=ttyS0,115200 console=tty0 loglevel=7"
+    packages:
+      - linux-image-amd64
+
+  configurations:
+    # Users (chpasswd — plaintext, reliable)
+    - cmd: "sh -c 'echo \"root:root\" | chpasswd'"
+    - cmd: "useradd -m -s /bin/bash -G sudo sysadmin"
+    - cmd: "sh -c 'echo \"sysadmin:sysadmin\" | chpasswd'"
+    - cmd: "sh -c 'echo \"sysadmin ALL=(ALL) NOPASSWD:ALL\" >> /etc/sudoers.d/sysadmin'"
+    - cmd: "chmod 0440 /etc/sudoers.d/sysadmin"
+    - cmd: "chown -R sysadmin:sysadmin /home/sysadmin"
+
+    # ROS 1 environment: Debian ROS 1 (via ros-environment, pulled by the leaf pkgs)
+    # installs /etc/profile.d hooks that set ROS_DISTRO/ROS_PACKAGE_PATH on login.
+    # No /opt/ros/setup.bash in this packaging — nothing appended to bashrc.
+
+    # Services
+    - cmd: "systemctl enable NetworkManager"
+    - cmd: "systemctl enable ssh"
+
+    # SSH X11 forwarding (IPv4 only in QEMU)
+    - cmd: "sh -c \"mkdir -p /etc/ssh/sshd_config.d && printf 'AddressFamily inet\\n' > /etc/ssh/sshd_config.d/10-addressfamily.conf\""
+
+    # Disable IPv6
+    - cmd: "echo 'net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.d/99-disable-ipv6.conf"
+    - cmd: "echo 'net.ipv6.conf.default.disable_ipv6 = 1' >> /etc/sysctl.d/99-disable-ipv6.conf"
+
+    # Hostname + clean IPv4 /etc/hosts (ROS 1 master/node name resolution)
+    - cmd: "echo 'robotics-demo-elxr26-edge-ros1-prebuilt' > /etc/hostname"
+    - cmd: "sh -c 'printf \"127.0.0.1\\tlocalhost robotics-demo-elxr26-edge-ros1-prebuilt\\n\" > /etc/hosts'"
+
+    # ROS 1 networking env globally, using numeric IP (bypasses name resolution so
+    # roscore + rostopic respond instantly).
+    - cmd: "sh -c 'printf \"export ROS_MASTER_URI=http://127.0.0.1:11311\\nexport ROS_HOSTNAME=127.0.0.1\\nexport ROS_IP=127.0.0.1\\n\" > /etc/profile.d/ros-network.sh && chmod 0644 /etc/profile.d/ros-network.sh'"
+
+    # Enable the full set of Bianca components in the installed image's apt sources
+    # (so post-boot 'apt install ros-core' etc. works if the user wants the metapackages).
+    - cmd: "sh -c 'printf \"deb [arch=amd64 signed-by=/usr/share/keyrings/elxr-archive-keyring.gpg] https://mirror.elxr.dev/elxr bianca main main-debian-community non-free-firmware non-free-firmware-debian-community contrib\\ndeb [arch=amd64 signed-by=/usr/share/keyrings/elxr-archive-keyring.gpg] https://mirror.elxr.dev/elxr bianca-security main main-debian-community non-free-firmware non-free-firmware-debian-community contrib\\ndeb [arch=amd64 signed-by=/usr/share/keyrings/elxr-archive-keyring.gpg] https://mirror.elxr.dev/elxr bianca-updates main main-debian-community non-free-firmware non-free-firmware-debian-community contrib\\n\" > /etc/apt/sources.list.d/elxr-bianca.list'"
+
+    # Create ROS workspace directory for user development
+    - cmd: "mkdir -p /home/sysadmin/catkin_ws/src"
+    - cmd: "chown -R sysadmin:sysadmin /home/sysadmin/catkin_ws"
