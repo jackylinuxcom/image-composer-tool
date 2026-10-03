@@ -1,6 +1,6 @@
 # AI-searchable metadata for template discovery
 metadata:
-  description: ELXR 13 edge-optimized image with container runtime and edge computing packages
+  description: ELXR 26 edge-optimized image with container runtime and edge computing packages
   use_cases:
     - Edge computing deployments
     - Container workloads at the edge
@@ -17,11 +17,11 @@ metadata:
 
 image:
   name: minimal-os-image-elxr
-  version: "13.0.0"
+  version: "26.04.02"
 
 target:
   os: wind-river-elxr
-  dist: elxr13
+  dist: elxr26
   arch: x86_64
   imageType: raw
 

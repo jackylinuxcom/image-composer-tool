@@ -19,7 +19,7 @@ image:
 
 target:
   os: wind-river-elxr # Target OS name
-  dist: elxr13 # Target OS distribution
+  dist: elxr26 # Target OS distribution
   arch: x86_64 # Target OS architecture
   imageType: raw # Image type, valid value: [raw, iso].
 
@@ -81,3 +81,32 @@ systemConfig:
     packages:
       - linux-image-6.12-intel
       - linux-headers-6.12-intel
+
+  configurations:
+    # User account setup
+    # Set root password (hashed: 'root' using SHA512)
+    - cmd: "echo 'root:root' | chpasswd"
+    
+    # Create sysadmin user with password (hashed: 'password')
+    - cmd: "useradd -m -s /bin/bash -G sudo sysadmin"
+    - cmd: "echo 'sysadmin:password' | chpasswd"
+
+    # Allow sysadmin to use sudo without password (optional, for convenience)
+    - cmd: "sh -c 'echo \"sysadmin ALL=(ALL) NOPASSWD:ALL\" >> /etc/sudoers.d/sysadmin'"
+    - cmd: "chmod 0440 /etc/sudoers.d/sysadmin"
+
+    # Fix ownership of sysadmin home directory
+    - cmd: "chown -R sysadmin:sysadmin /home/sysadmin"
+
+    # Enable required services
+    - cmd: "systemctl enable ssh"
+
+    # Fix SSH X11 forwarding (IPv6 socket allocation fails in QEMU)
+    - cmd: "sh -c \"mkdir -p /etc/ssh/sshd_config.d && printf 'AddressFamily inet\\n' > /etc/ssh/sshd_config.d/10-addressfamily.conf\""
+
+    # Disable IPv6 (avoids DNS/connection timeouts in VM environments)
+    - cmd: "echo 'net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.d/99-disable-ipv6.conf"
+    - cmd: "echo 'net.ipv6.conf.default.disable_ipv6 = 1' >> /etc/sysctl.d/99-disable-ipv6.conf"
+
+    # Set hostname
+    - cmd: "echo 'intel-oep-elxr2604' > /etc/hostname"

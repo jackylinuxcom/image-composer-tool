@@ -1,5 +1,5 @@
 metadata:
-  description: Minimal ELXR 13 image with essential packages for lightweight ARM64 deployments
+  description: Minimal ELXR 26 image with essential packages for lightweight ARM64 deployments
   use_cases:
     - Lightweight ARM64 deployments
     - Embedded and edge devices
@@ -13,12 +13,12 @@ metadata:
     - elxr
 
 image:
-  name: elxr13-aarch64-minimal
+  name: elxr26-aarch64-minimal
   version: "1.0.0"
 
 target:
   os: wind-river-elxr # Target OS name
-  dist: elxr13 # Target OS distribution
+  dist: elxr26 # Target OS distribution
   arch: aarch64 # Target OS architecture
   imageType: raw # Image type, valid value: [raw, iso].
 
